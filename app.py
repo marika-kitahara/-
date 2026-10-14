@@ -36,40 +36,45 @@ if files:
     bad_date=int(df['成果発生日時'].isna().sum())
     bad_cost=int(df['グロス'].isna().sum())
     if bad_date: st.warning(f'成果発生日時が無効な {bad_date:,} 行は集計から除外します。')
-    if bad_cost: st.warning(f'グロスが数値として読めない {bad_cost:,} 行はグロス0として集計します。')
+    if bad_cost: st.warning(f'グロスが数値として読めない {bad_cost:,} 行はコスト0として集計します。')
     df=df.dropna(subset=['成果発生日時']).copy()
     df['グロス']=df['グロス'].fillna(0)
     df['アフィリエイトID']=df['アフィリエイトID'].fillna('').astype(str).str.strip()
     df['パートナーサイト名']=df['パートナーサイト名'].fillna('').astype(str).str.strip()
     df['月']=df['成果発生日時'].dt.to_period('M')
     df['発行']=df['成果承認フラグ'].astype(str).str.strip().str.upper().eq('Y')
-    df['発行グロス値']=df['グロス'].where(df['発行'],0)
+    df['コスト値']=df['グロス'].where(df['発行'],0)
     keys=['アフィリエイトID','パートナーサイト名','月']
-    agg=df.groupby(keys,dropna=False).agg(申込件数=('発行','size'),発行件数=('発行','sum'),グロス=('グロス','sum'),発行グロス=('発行グロス値','sum')).reset_index()
-    agg['申込CPA']=agg['グロス']/agg['申込件数'].replace(0,float('nan'))
-    agg['発行CPA']=agg['発行グロス']/agg['発行件数'].replace(0,float('nan'))
-    metrics=['申込件数','発行件数','グロス','発行グロス','申込CPA','発行CPA']
+    # 申込件数は全レコード、コストは承認フラグYのレコードのみ。
+    agg=df.groupby(keys,dropna=False).agg(申込件数=('発行','size'),コスト=('コスト値','sum')).reset_index()
+    agg['申込CPA']=agg['コスト']/agg['申込件数'].replace(0,float('nan'))
+    metrics=['申込CPA','申込件数','コスト']
     months=sorted(agg['月'].unique())
     labels=[f'{m.year}/{m.month}' for m in months]
     tables={}
+    pairs=agg[keys[:2]].drop_duplicates()
     for metric in metrics:
-        pivot=agg.pivot_table(index=keys[:2],columns='月',values=metric,aggfunc='first',dropna=False)
-        # dropna=False can generate nonexistent ID/site combinations; retain only observed pairs.
-        pairs=agg[keys[:2]].drop_duplicates()
+        pivot=agg.pivot_table(index=keys[:2],columns='月',values=metric,aggfunc='first')
         pivot=pivot.reindex(pd.MultiIndex.from_frame(pairs)).reindex(columns=months)
-        if metric not in ('申込CPA','発行CPA'):
+        if metric != '申込CPA':
             pivot=pivot.fillna(0)
         pivot.columns=labels
         tables[metric]=pivot.reset_index().sort_values(keys[:2],kind='stable').reset_index(drop=True)
-    # CPAの期間トータルは月別CPAの単純平均ではなく、全期間の合計から再計算する。
-    period=agg.groupby(keys[:2],dropna=False)[['申込件数','発行件数','グロス','発行グロス']].sum().reset_index()
-    for metric, numerator, denominator in (
-        ('申込CPA','グロス','申込件数'),
-        ('発行CPA','発行グロス','発行件数'),
-    ):
-        total=period[keys[:2]].copy()
-        total['期間トータル']=period[numerator].div(period[denominator].replace(0,float('nan')))
-        tables[metric]=tables[metric].merge(total,on=keys[:2],how='left',validate='one_to_one')
+    # 期間トータルCPAはコスト総額÷申込総件数で計算（単純平均しない）。
+    period=agg.groupby(keys[:2],dropna=False)[['申込件数','コスト']].sum().reset_index()
+    period['期間トータル']=period['コスト'].div(period['申込件数'].replace(0,float('nan')))
+    tables['申込CPA']=tables['申込CPA'].merge(period[keys[:2]+['期間トータル']],on=keys[:2],how='left',validate='one_to_one')
+    # Excel A列を文字列でなく数値として保存する。数値化できないIDはエラー表示。
+    invalid_ids=pd.to_numeric(pairs['アフィリエイトID'],errors='coerce').isna()
+    if invalid_ids.any():
+        st.error('数値に変換できないアフィリエイトIDがあります: '+', '.join(pairs.loc[invalid_ids,'アフィリエイトID'].head(5).tolist()))
+        st.stop()
+    # Excelの数値は15桁までが正確に扱える範囲。
+    if (pairs['アフィリエイトID'].str.replace(r'^\+', '', regex=True).str.replace(r'^-', '', regex=True).str.len()>15).any():
+        st.error('15桁を超えるアフィリエイトIDがあります。Excelで精度が失われるため出力を中止します。')
+        st.stop()
+    for metric in metrics:
+        tables[metric]['アフィリエイトID']=pd.to_numeric(tables[metric]['アフィリエイトID']).astype('int64')
     st.success(f'{len(files)} ファイル・{len(df):,} 行を集計しました。')
     selected=st.selectbox('表示する指標',metrics)
     st.dataframe(tables[selected],use_container_width=True,hide_index=True)
@@ -81,6 +86,8 @@ if files:
             ws.freeze_panes='C2'
             ws.auto_filter.ref=ws.dimensions
             ws.column_dimensions['A'].width=22
+            for cell in ws['A'][1:]:
+                cell.number_format='0'
             ws.column_dimensions['B'].width=36
             for col in ws.iter_cols(min_col=3):
                 ws.column_dimensions[col[0].column_letter].width=16
