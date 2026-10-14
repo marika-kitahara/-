@@ -61,6 +61,15 @@ if files:
             pivot=pivot.fillna(0)
         pivot.columns=labels
         tables[metric]=pivot.reset_index().sort_values(keys[:2],kind='stable').reset_index(drop=True)
+    # CPAの期間トータルは月別CPAの単純平均ではなく、全期間の合計から再計算する。
+    period=agg.groupby(keys[:2],dropna=False)[['申込件数','発行件数','グロス','発行グロス']].sum().reset_index()
+    for metric, numerator, denominator in (
+        ('申込CPA','グロス','申込件数'),
+        ('発行CPA','発行グロス','発行件数'),
+    ):
+        total=period[keys[:2]].copy()
+        total['期間トータル']=period[numerator].div(period[denominator].replace(0,float('nan')))
+        tables[metric]=tables[metric].merge(total,on=keys[:2],how='left',validate='one_to_one')
     st.success(f'{len(files)} ファイル・{len(df):,} 行を集計しました。')
     selected=st.selectbox('表示する指標',metrics)
     st.dataframe(tables[selected],use_container_width=True,hide_index=True)
