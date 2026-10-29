@@ -94,10 +94,10 @@ if files:
                 ws.column_dimensions[col[0].column_letter].width=16
                 for cell in col[1:]:
                     cell.number_format='#,##0.00' if metric.endswith('CPA') else '#,##0.##'
-    st.download_button('集計Excelをダウンロード',data=out.getvalue(),file_name='アフィリエイト月次集計.xlsx',mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    st.download_button('集計Excelをダウンロード',data=out.getvalue(),file_name='成果データ月次集計.xlsx',mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
 else:
     st.info('CSVをアップロードすると集計結果が表示されます。')', layout='wide')
-st.title('アフィリエイト月次集計')
+st.title('成果データ月次集計')
 st.caption('複数CSVを合算し、アフィリエイトID × 成果発生月で集計します。')
 files = st.file_uploader('CSVファイルをアップロード（複数選択可）', type=['csv'], accept_multiple_files=True)
 REQUIRED = ['成果承認フラグ','アフィリエイトID','パートナーサイト名','成果発生日時','グロス']
@@ -184,6 +184,6 @@ if files:
                 ws.column_dimensions[col[0].column_letter].width=16
                 for cell in col[1:]:
                     cell.number_format='#,##0.00' if metric.endswith('CPA') else '#,##0.##'
-    st.download_button('集計Excelをダウンロード',data=out.getvalue(),file_name='アフィリエイト月次集計.xlsx',mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    st.download_button('集計Excelをダウンロード',data=out.getvalue(),file_name='成果データ月次集計.xlsx',mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
 else:
     st.info('CSVをアップロードすると集計結果が表示されます。')
