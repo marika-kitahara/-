@@ -60,16 +60,13 @@ if files:
             pivot=pivot.fillna(0)
         pivot.columns=labels
         tables[metric]=pivot.reset_index().sort_values(keys[:2],kind='stable').reset_index(drop=True)
-    # 期間トータルCPAはコスト総額÷申込総件数で計算（単純平均しない）。
     period=agg.groupby(keys[:2],dropna=False)[['申込件数','コスト']].sum().reset_index()
     period['期間トータル']=period['コスト'].div(period['申込件数'].replace(0,float('nan')))
     tables['申込CPA']=tables['申込CPA'].merge(period[keys[:2]+['期間トータル']],on=keys[:2],how='left',validate='one_to_one')
-    # Excel A列を文字列でなく数値として保存する。数値化できないIDはエラー表示。
     invalid_ids=pd.to_numeric(pairs['アフィリエイトID'],errors='coerce').isna()
     if invalid_ids.any():
         st.error('数値に変換できないアフィリエイトIDがあります: '+', '.join(pairs.loc[invalid_ids,'アフィリエイトID'].head(5).tolist()))
         st.stop()
-    # Excelの数値は15桁までが正確に扱える範囲。
     if (pairs['アフィリエイトID'].str.replace(r'^\+', '', regex=True).str.replace(r'^-', '', regex=True).str.len()>15).any():
         st.error('15桁を超えるアフィリエイトIDがあります。Excelで精度が失われるため出力を中止します。')
         st.stop()
